@@ -1,6 +1,6 @@
 import boto3
 from botocore.exceptions import ClientError
-
+import io
 
 class S3Storage:
     def __init__(self):
@@ -41,4 +41,48 @@ class S3Storage:
         return {
             "bucket": self.bucket_name,
             "filename": file.filename,
+        }
+    
+    def list_files(self):
+
+        response = self.client.list_objects_v2(
+            Bucket=self.bucket_name
+        )
+
+        files = []
+
+        for obj in response.get("Contents", []):
+
+            files.append(
+                {
+                    "filename": obj["Key"],
+                    "size": obj["Size"]
+                }
+            )
+
+        return files
+    
+    def download(self, filename):
+
+        file_stream = io.BytesIO()
+
+        self.client.download_fileobj(
+            Bucket=self.bucket_name,
+            Key=filename,
+            Fileobj=file_stream
+        )
+
+        file_stream.seek(0)
+
+        return file_stream
+    
+    def delete(self, filename):
+
+        self.client.delete_object(
+            Bucket=self.bucket_name,
+            Key=filename
+        )
+
+        return {
+            "message": f"{filename} deleted successfully"
         }
