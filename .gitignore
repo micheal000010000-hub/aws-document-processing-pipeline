@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual Environment
+.venv/
+venv/
+
+# Environment Variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Test Cache
+.pytest_cache/
+
+# Uploaded Files
+uploads/
+
+# Local AWS/Floci artifacts
+response.json
+event.json
+
+# OS
+.DS_Store
