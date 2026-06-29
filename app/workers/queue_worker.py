@@ -1,68 +1,72 @@
+from __future__ import annotations
+
 import json
-import logging
 import time
 
-import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
-from app.config import (
-    AWS_ENDPOINT,
-    AWS_REGION,
-    AWS_ACCESS_KEY,
-    AWS_SECRET_KEY,
-)
-
+from app.logger import configure_logging, logger
 from app.services.dynamodb_service import DynamoDBService
-
-QUEUE_URL = "http://localhost:4566/000000000000/document-processing-queue"
-
-client = boto3.client(
-    "sqs",
-    endpoint_url=AWS_ENDPOINT,
-    region_name=AWS_REGION,
-    aws_access_key_id=AWS_ACCESS_KEY,
-    aws_secret_access_key=AWS_SECRET_KEY,
-)
-
-database = DynamoDBService()
-
-logging.info("Queue Worker Started...")
+from app.services.sqs_service import SQSService
 
 
-while True:
+class QueueWorker:
+    def __init__(self) -> None:
+        self.queue_service = SQSService()
+        self.database_service = DynamoDBService()
 
-    response = client.receive_message(
-        QueueUrl=QUEUE_URL,
-        MaxNumberOfMessages=1,
-        WaitTimeSeconds=5,
-    )
 
-    messages = response.get("Messages", [])
-
-    if not messages:
-        continue
-
-    for message in messages:
-
+    def process_message(self, message: dict[str, object]) -> None:
         body = json.loads(message["Body"])
+        filename = body.get("filename")
+        size = body.get("size")
+        bucket = body.get("bucket")
+        content_type = body.get("contentType")
+        event_name = body.get("event", "DOCUMENT_UPLOADED")
 
-        logging.info("=" * 60)
-        logging.info("Received Event:")
-        logging.info(body)
+        if not filename:
+            raise ValueError("Message is missing filename")
 
-        metadata = database.save_metadata(
-            filename=body["filename"],
-            size=body["size"]
-        )
+        if event_name == "DOCUMENT_DELETED":
+            deleted_count = self.database_service.delete_documents_by_filename(str(filename))
+            logger.info("Deleted %s metadata records for %s", deleted_count, filename)
+        else:
+            metadata = self.database_service.save_metadata(
+                filename=str(filename),
+                size=int(size or 0),
+                bucket=str(bucket) if bucket else None,
+                content_type=str(content_type) if content_type else None,
+            )
+            logger.info("Saved metadata for %s: %s", filename, metadata)
 
-        logging.info("\nSaved Metadata:")
-        logging.info(metadata)
+        self.queue_service.delete_message(message["ReceiptHandle"])
+        logger.info("Deleted processed SQS message for %s", filename)
 
-        client.delete_message(
-            QueueUrl=QUEUE_URL,
-            ReceiptHandle=message["ReceiptHandle"],
-        )
+    def run(self, poll_interval_seconds: int = 1) -> None:
+        logger.info("Queue worker started")
 
-        logging.info("\nMessage Deleted")
-        logging.info("=" * 60)
+        while True:
+            try:
+                messages = self.queue_service.receive_messages(max_number_of_messages=10, wait_time_seconds=10)
+            except (ClientError, BotoCoreError):
+                logger.exception("Failed to poll SQS")
+                time.sleep(poll_interval_seconds)
+                continue
 
-    time.sleep(1)
+            if not messages:
+                continue
+
+            for message in messages:
+                try:
+                    self.process_message(message)
+                except (ClientError, BotoCoreError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                    logger.exception("Failed to process SQS message")
+
+
+def main() -> None:
+    configure_logging()
+    QueueWorker().run()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,4 @@
-from app.workers.worker import main
+from app.workers.queue_worker import main
 
 
 if __name__ == "__main__":

@@ -1,0 +1,48 @@
+services:
+  floci:
+    image: localstack/localstack:3.4
+    container_name: floci
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,sqs,dynamodb
+      AWS_DEFAULT_REGION: us-east-1
+      DEBUG: "0"
+      PERSISTENCE: "1"
+    volumes:
+      - floci-data:/var/lib/localstack
+
+  api:
+    build: .
+    container_name: document-pipeline-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
+    environment:
+      AWS_ENDPOINT: http://floci:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY: test
+      AWS_SECRET_KEY: test
+      S3_BUCKET: document-bucket
+    ports:
+      - "8000:8000"
+    depends_on:
+      - floci
+
+  worker:
+    build: .
+    container_name: document-pipeline-worker
+    command: python -m app.workers.queue_worker
+    env_file:
+      - .env
+    environment:
+      AWS_ENDPOINT: http://floci:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY: test
+      AWS_SECRET_KEY: test
+      S3_BUCKET: document-bucket
+    depends_on:
+      - floci
+
+volumes:
+  floci-data:
