@@ -61,6 +61,17 @@ app/
 - python-dotenv
 - Docker
 - Docker Compose
+- GitHub Actions (CI)
+
+## Continuous Integration
+
+This project uses GitHub Actions for continuous integration.
+
+- On every push to `main` and `release/**`, the CI workflow runs automatically.
+- On every pull request to `main`, the CI workflow also runs automatically.
+- The workflow installs dependencies, verifies Python imports (`python -m compileall app`), and builds the Docker image.
+
+Workflow file: `.github/workflows/ci.yml`
 
 ## Local Setup
 
